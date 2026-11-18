@@ -1,0 +1,33 @@
+# build output and generated binaries
+out/
+*.dcu
+*.res
+*.RES
+*.exe
+*.obj
+__history/
+*.local
+*.identcache
+
+# test copies for a VM (binaries) and test scratch
+vm-test/
+
+# NEVER commit: copies of real keyrings and keys, vendor screenshots/samples, third-party binaries
+testdata/
+reference/
+pgp-samples/
+*.pkr
+*.skr
+*.gpg
+*.asc
+
+# screenshots of the running app (can show real key names); add the ones you want to publish by hand
+shots/
+
+# icons that are not ours to redistribute / vendor art
+program icons/archive2.ico
+program icons/REFERENCE-*
+Thumbs.db
+
+# stock preview art (watermarked), never publish
+program icons/applogo.ico
