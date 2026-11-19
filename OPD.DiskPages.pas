@@ -55,6 +55,8 @@ type
     FName, FFolder, FSize: TEdit;
     FLetter, FUnit, FFormat, FEnc: TComboBox;
     FUsers: TListView;
+    FBrowse, FAddBtn, FDelBtn: TButton;
+    FHint, FDesc: TLabel;
     FKeys: TKeyInfoArray;
     FChosen: TStringList;
     FBusy: Boolean;
@@ -68,6 +70,8 @@ type
     procedure RemoveUserClick(Sender: TObject);
     procedure FillUsers;
     function Lbl(const ACaption: string; AY: Integer): TLabel;
+  protected
+    procedure Resize; override;
   public
     constructor Create(AOwner: TComponent; const AEngine: IKeyEngine; ACtl: TDiskController;
       AGetKeys: TGetKeysFunc); reintroduce;
@@ -372,7 +376,7 @@ begin
   Result.Parent := Self;
   Result.AutoSize := False;
   Result.Alignment := taRightJustify;
-  Result.SetBounds(DpiScale(16), DpiScale(AY + 3), DpiScale(170), DpiScale(18));
+  Result.SetBounds(DpiScale(16), DpiScale(AY + 3), DpiScale(120), DpiScale(18));
   Result.Caption := ACaption;
   Result.Font.Color := clWhite;
   Result.Font.Style := [fsBold];
@@ -398,7 +402,7 @@ begin
   ParentBackground := False;
   Color := PAGE_COLOR;
   ApplyUiFont(Font, 9);
-  X := DpiScale(196);
+  X := DpiScale(144);    { label column 16..136, fields from here }
 
   L := TLabel.Create(Self);
   L.Parent := Self;
@@ -420,11 +424,11 @@ begin
   FFolder.SetBounds(X, DpiScale(76), DpiScale(330), DpiScale(23));
   Docs := TPath.GetDocumentsPath;
   FFolder.Text := Docs;
-  B := TButton.Create(Self);
-  B.Parent := Self;
-  B.SetBounds(X + DpiScale(340), DpiScale(75), DpiScale(86), DpiScale(25));
-  B.Caption := 'Browse...';
-  B.OnClick := BrowseClick;
+  FBrowse := TButton.Create(Self);
+  FBrowse.Parent := Self;
+  FBrowse.SetBounds(X + DpiScale(340), DpiScale(75), DpiScale(86), DpiScale(25));
+  FBrowse.Caption := 'Browse...';
+  FBrowse.OnClick := BrowseClick;
 
   Lbl('Mount as', 108);
   FLetter := TComboBox.Create(Self);
@@ -444,12 +448,14 @@ begin
   FUnit.SetBounds(X + DpiScale(90), DpiScale(140), DpiScale(70), DpiScale(24));
   FUnit.Items.AddStrings(['MB', 'GB']);
   FUnit.ItemIndex := 1;
-  L := TLabel.Create(Self);
-  L.Parent := Self;
-  L.SetBounds(X + DpiScale(172), DpiScale(144), DpiScale(270), DpiScale(18));
-  L.Caption := '(the whole size is reserved on disk at once)';
-  L.Font.Color := $00E8E0D8;
-  L.Transparent := True;
+  FHint := TLabel.Create(Self);
+  FHint.Parent := Self;
+  FHint.AutoSize := False;
+  FHint.EllipsisPosition := epEndEllipsis;
+  FHint.SetBounds(X + DpiScale(172), DpiScale(144), DpiScale(200), DpiScale(18));
+  FHint.Caption := '(reserved on disk at once)';
+  FHint.Font.Color := $00E8E0D8;
+  FHint.Transparent := True;
 
   Lbl('Format', 172);
   FFormat := TComboBox.Create(Self);
@@ -476,15 +482,15 @@ begin
   L.Font.Color := clWhite;
   L.Transparent := True;
 
-  L := TLabel.Create(Self);
-  L.Parent := Self;
-  L.SetBounds(DpiScale(16), DpiScale(272), DpiScale(600), DpiScale(34));
-  L.AutoSize := False;
-  L.WordWrap := True;
-  L.Caption := 'The disk opens with the passphrase of any key listed here. ' +
+  FDesc := TLabel.Create(Self);
+  FDesc.Parent := Self;
+  FDesc.SetBounds(DpiScale(16), DpiScale(272), DpiScale(600), DpiScale(34));
+  FDesc.AutoSize := False;
+  FDesc.WordWrap := True;
+  FDesc.Caption := 'The disk opens with the passphrase of any key listed here. ' +
     'Keep the small .key.gpg file next to the disk: without it the disk cannot be opened.';
-  L.Font.Color := $00E8E0D8;
-  L.Transparent := True;
+  FDesc.Font.Color := $00E8E0D8;
+  FDesc.Transparent := True;
 
   FUsers := TListView.Create(Self);
   FUsers.Parent := Self;
@@ -496,16 +502,16 @@ begin
   C := FUsers.Columns.Add; C.Caption := 'Email'; C.Width := DpiScale(170);
   C := FUsers.Columns.Add; C.Caption := 'Key ID'; C.Width := DpiScale(90);
 
-  B := TButton.Create(Self);
-  B.Parent := Self;
-  B.SetBounds(DpiScale(458), DpiScale(312), DpiScale(150), DpiScale(28));
-  B.Caption := 'Add User Key...';
-  B.OnClick := AddUserClick;
-  B := TButton.Create(Self);
-  B.Parent := Self;
-  B.SetBounds(DpiScale(458), DpiScale(346), DpiScale(150), DpiScale(28));
-  B.Caption := 'Delete User';
-  B.OnClick := RemoveUserClick;
+  FAddBtn := TButton.Create(Self);
+  FAddBtn.Parent := Self;
+  FAddBtn.SetBounds(DpiScale(458), DpiScale(312), DpiScale(130), DpiScale(28));
+  FAddBtn.Caption := 'Add User Key...';
+  FAddBtn.OnClick := AddUserClick;
+  FDelBtn := TButton.Create(Self);
+  FDelBtn.Parent := Self;
+  FDelBtn.SetBounds(DpiScale(458), DpiScale(346), DpiScale(130), DpiScale(28));
+  FDelBtn.Caption := 'Delete User';
+  FDelBtn.OnClick := RemoveUserClick;
 
   FProgress := TLabel.Create(Self);
   FProgress.Parent := Self;
@@ -530,6 +536,33 @@ begin
   Secs := Round((Now - FProgStart) * SecsPerDay);
   FProgress.Caption := Format('Creating the disk (%s)... %d:%.2d elapsed. Please keep CryptLok open until it finishes.',
     [FProgSize, Secs div 60, Secs mod 60]);
+end;
+
+{ fits the fields to the page width, so nothing runs off the right on a narrower window }
+procedure TNewDiskPage.Resize;
+var
+  X, W, Right: Integer;
+begin
+  inherited;
+  if FUsers = nil then Exit;          { still being created }
+  X := DpiScale(144);
+  Right := ClientWidth - DpiScale(16);
+  { folder box grows or shrinks, Browse stays at its end }
+  W := EnsureRange(Right - X - DpiScale(94), DpiScale(160), DpiScale(420));
+  FFolder.Width := W;
+  FBrowse.Left := X + W + DpiScale(8);
+  FHint.Width := Max(0, Right - FHint.Left);
+  FDesc.Width := Max(DpiScale(200), Right - DpiScale(16));
+  { the key list takes what is left beside its two buttons }
+  W := EnsureRange(Right - DpiScale(16) - DpiScale(142), DpiScale(240), DpiScale(560));
+  FUsers.Width := W;
+  { columns share the width (Key ID keeps what it needs), so there is no sideways scrollbar }
+  W := W - DpiScale(24) - DpiScale(90);
+  FUsers.Columns[0].Width := W * 45 div 100;
+  FUsers.Columns[1].Width := W - FUsers.Columns[0].Width;
+  FUsers.Columns[2].Width := DpiScale(90);
+  FAddBtn.Left := FUsers.Left + FUsers.Width + DpiScale(12);
+  FDelBtn.Left := FAddBtn.Left;
 end;
 
 destructor TNewDiskPage.Destroy;

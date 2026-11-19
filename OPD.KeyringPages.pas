@@ -16,7 +16,23 @@ uses
 type
   TRestartProc = reference to procedure;
 
-  TBackupPage = class(TPanel)
+  { a page whose controls are stacked top to bottom and whose text wraps to the window width }
+  TFlowPage = class(TPanel)
+  private
+    FFlow: TArray<TControl>;
+    FGap: TArray<Integer>;      { space above the control; -1 = on the same row as the one before }
+    procedure Reflow;
+  protected
+    procedure Resize; override;
+    procedure AddFlow(C: TControl; AGap: Integer);
+    function Heading(const ACap: string; AGap: Integer): TLabel;
+    function Body(const ACap: string; AGap: Integer): TLabel;
+    function Btn(const ACap: string; AW, AGap: Integer; AClick: TNotifyEvent): TButton;
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
+  TBackupPage = class(TFlowPage)
   private
     FEngine: IKeyEngine;
     FLast: TLabel;
@@ -28,7 +44,7 @@ type
     procedure Prepare;
   end;
 
-  TLocationPage = class(TPanel)
+  TLocationPage = class(TFlowPage)
   private
     FEngine: IKeyEngine;
     FFolder: TEdit;
@@ -232,46 +248,112 @@ begin
     RemoveDir(AFolder);
 end;
 
-{ ---- page helpers ---- }
+{ ---- flowing page ---- }
 
-function Heading(AOwner: TWinControl; const ACap: string; AY: Integer): TLabel;
+constructor TFlowPage.Create(AOwner: TComponent);
 begin
-  Result := TLabel.Create(AOwner);
-  Result.Parent := AOwner;
-  Result.SetBounds(DpiScale(16), DpiScale(AY), DpiScale(600), DpiScale(20));
-  Result.Caption := ACap;
-  Result.Font.Style := [fsBold];
+  inherited Create(AOwner);
+  Parent := TWinControl(AOwner);
+  BevelOuter := bvNone;
+  ParentBackground := False;
+  Color := PAGE_COLOR;
+  ApplyUiFont(Font, 9);
+end;
+
+procedure TFlowPage.AddFlow(C: TControl; AGap: Integer);
+begin
+  C.Parent := Self;
+  FFlow := FFlow + [C];
+  FGap := FGap + [AGap];
+end;
+
+function TFlowPage.Heading(const ACap: string; AGap: Integer): TLabel;
+begin
+  Result := TLabel.Create(Self);
+  Result.Font.Style := [fsBold];         { before the caption, so the size is measured in bold }
   Result.Font.Color := clWhite;
   Result.Transparent := True;
+  Result.Caption := ACap;
+  AddFlow(Result, AGap);
 end;
 
-function Body(AOwner: TWinControl; const ACap: string; AY, AH: Integer): TLabel;
+function TFlowPage.Body(const ACap: string; AGap: Integer): TLabel;
 begin
-  Result := TLabel.Create(AOwner);
-  Result.Parent := AOwner;
-  Result.AutoSize := False;
+  Result := TLabel.Create(Self);
+  Result.AutoSize := False;      { the height is measured in Reflow for the current width }
   Result.WordWrap := True;
-  Result.SetBounds(DpiScale(16), DpiScale(AY), DpiScale(640), DpiScale(AH));
-  Result.Caption := ACap;
   Result.Font.Color := PAGE_TEXT;
   Result.Transparent := True;
+  Result.Caption := ACap;
+  AddFlow(Result, AGap);
 end;
 
-function Btn(AOwner: TWinControl; const ACap: string; AX, AY, AW: Integer; AClick: TNotifyEvent): TButton;
+function TFlowPage.Btn(const ACap: string; AW, AGap: Integer; AClick: TNotifyEvent): TButton;
 begin
-  Result := TButton.Create(AOwner);
-  Result.Parent := AOwner;
-  Result.SetBounds(DpiScale(AX), DpiScale(AY), DpiScale(AW), DpiScale(30));
+  Result := TButton.Create(Self);
+  Result.SetBounds(0, 0, DpiScale(AW), DpiScale(28));
   Result.Caption := ACap;
   Result.OnClick := AClick;
+  AddFlow(Result, AGap);
 end;
 
-procedure StylePage(P: TPanel);
+procedure TFlowPage.Resize;
 begin
-  P.BevelOuter := bvNone;
-  P.ParentBackground := False;
-  P.Color := PAGE_COLOR;
-  ApplyUiFont(P.Font, 9);
+  inherited;
+  Reflow;
+end;
+
+{ height a word-wrapped label needs at width AW }
+function WrappedHeight(L: TLabel; AW: Integer): Integer;
+var
+  R: TRect;
+  DC: HDC;
+  Old: HFONT;
+begin
+  if L.Caption = '' then Exit(0);
+  R := Rect(0, 0, AW, 0);
+  DC := GetDC(0);
+  try
+    Old := SelectObject(DC, L.Font.Handle);
+    DrawText(DC, PChar(L.Caption), -1, R, DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX);
+    SelectObject(DC, Old);
+  finally
+    ReleaseDC(0, DC);
+  end;
+  Result := R.Bottom + 2;
+end;
+
+procedure TFlowPage.Reflow;
+var
+  I, Y, X, W, RowTop, RowBottom: Integer;
+  C: TControl;
+begin
+  W := Max(DpiScale(220), Min(ClientWidth - DpiScale(32), DpiScale(720)));
+  Y := DpiScale(12);
+  RowTop := Y;
+  RowBottom := Y;
+  X := DpiScale(16);
+  for I := 0 to High(FFlow) do
+  begin
+    C := FFlow[I];
+    if (FGap[I] < 0) and (I > 0) then
+    begin
+      { next to the previous control }
+      X := FFlow[I - 1].Left + FFlow[I - 1].Width + DpiScale(8);
+      C.SetBounds(X, RowTop, C.Width, C.Height);
+    end
+    else
+    begin
+      RowTop := RowBottom + DpiScale(FGap[I]);
+      if (C is TLabel) and TLabel(C).WordWrap then
+        C.SetBounds(DpiScale(16), RowTop, W, WrappedHeight(TLabel(C), W))
+      else if C is TEdit then
+        C.SetBounds(DpiScale(16), RowTop, W, C.Height)
+      else
+        C.SetBounds(DpiScale(16), RowTop, C.Width, C.Height);
+    end;
+    RowBottom := Max(RowBottom, C.Top + C.Height);
+  end;
 end;
 
 { ---- Backup Keyring ---- }
@@ -279,20 +361,17 @@ end;
 constructor TBackupPage.Create(AOwner: TComponent; const AEngine: IKeyEngine; AOnRestart: TRestartProc);
 begin
   inherited Create(AOwner);
-  Parent := TWinControl(AOwner);
   FEngine := AEngine;
   FOnRestart := AOnRestart;
-  StylePage(Self);
-  Heading(Self, 'Back Up Your Keyring', 16);
-  Body(Self, 'Saves your public and private keys, trust settings and CryptLok settings to one .zip file. ' +
-    'Private keys stay protected by their passphrases, but keep the backup somewhere safe, for example on a ' +
-    'USB stick you lock away. Make a new backup after you create or import keys.', 44, 54);
-  Btn(Self, 'Back Up Now...', 16, 104, 150, BackupClick);
-  FLast := Body(Self, '', 144, 40);
-  Heading(Self, 'Restore from a Backup', 200);
-  Body(Self, 'Unpacks a backup into a folder you choose and switches CryptLok to it (CryptLok restarts). ' +
-    'Your current keyring is not changed or deleted; you can switch back in Keyring Location.', 228, 40);
-  Btn(Self, 'Restore from a Backup...', 16, 274, 190, RestoreClick);
+  Heading('Back Up Your Keyring', 4);
+  Body('Saves your keys, trust settings and CryptLok settings to one .zip file. Private keys stay protected by ' +
+    'their passphrases. Keep the backup somewhere safe and make a new one after you add keys.', 6);
+  Btn('Back Up Now...', 150, 10, BackupClick);
+  FLast := Body('', 8);
+  Heading('Restore from a Backup', 22);
+  Body('Unpacks a backup into a folder you choose and switches CryptLok to it (CryptLok restarts). ' +
+    'Your current keyring is not changed.', 6);
+  Btn('Restore from a Backup...', 190, 10, RestoreClick);
 end;
 
 procedure TBackupPage.Prepare;
@@ -311,6 +390,7 @@ begin
     FLast.Caption := 'No backup made yet.'
   else
     FLast.Caption := 'Last backup: ' + When + sLineBreak + Last;
+  Reflow;
 end;
 
 procedure TBackupPage.BackupClick(Sender: TObject);
@@ -403,31 +483,26 @@ end;
 constructor TLocationPage.Create(AOwner: TComponent; const AEngine: IKeyEngine; AOnRestart: TRestartProc);
 begin
   inherited Create(AOwner);
-  Parent := TWinControl(AOwner);
   FEngine := AEngine;
   FOnRestart := AOnRestart;
-  StylePage(Self);
-  Heading(Self, 'Keyring Location', 16);
-  Body(Self, 'The folder that holds your keyring (keys, trust settings) and CryptLok settings:', 44, 20);
+  Heading('Keyring Location', 4);
+  Body('The folder that holds your keyring and CryptLok settings:', 6);
   FFolder := TEdit.Create(Self);
-  FFolder.Parent := Self;
-  FFolder.SetBounds(DpiScale(16), DpiScale(68), DpiScale(560), DpiScale(23));
   FFolder.ReadOnly := True;
   FFolder.TabStop := False;          { not focused, so the path is not shown highlighted }
   FFolder.AutoSelect := False;
-  Btn(Self, 'Change Location...', 16, 104, 150, ChangeClick);
-  FDefault := Btn(Self, 'Use Default Location', 174, 104, 170, DefaultClick);
-  Body(Self, 'Change Location copies the keyring to the folder you choose, checks the copy, and restarts CryptLok ' +
-    'with it. You can then remove the old copy. If the folder you choose already holds a CryptLok keyring (for ' +
-    'example one on a USB stick, or a restored backup), CryptLok simply switches to it.' + sLineBreak + sLineBreak +
-    'A keyring on a removable drive must be connected when CryptLok starts; otherwise CryptLok asks you to ' +
-    'connect it.', 150, 110);
+  AddFlow(FFolder, 4);
+  Btn('Change Location...', 150, 10, ChangeClick);
+  FDefault := Btn('Use Default Location', 170, -1, DefaultClick);
+  Body('Change Location copies the keyring to a folder you choose, checks the copy and restarts CryptLok. ' +
+    'If the folder already holds a CryptLok keyring (a USB stick or a restored backup), CryptLok switches to it.', 14);
+  Body('A keyring on a removable drive must be connected when CryptLok starts.', 8);
 end;
 
 procedure TLocationPage.Prepare;
 begin
   FFolder.Text := ExcludeTrailingPathDelimiter(DataFolderOf(FEngine));
-  FDefault.Enabled := not SameText(FFolder.Text, ExcludeTrailingPathDelimiter(DefaultDataFolder));
+  FDefault.Enabled := not SameText(FFolder.Text, ExcludeTrailingPathDelimiter(DefaultDataFolder));  Reflow;
 end;
 
 procedure TLocationPage.SwitchTo(const ATarget: string);

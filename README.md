@@ -70,14 +70,14 @@ All artwork is original or licensed; no vendor logos or artwork are used. Writte
   Not done yet: passphrase-only + signing, Sign Only.
 
 ## Installing
-Run `CryptLok-Setup-0.2.0.exe`. Windows 10/11, 64-bit. GnuPG 2.5 is included (in `GnuPG\bin` next to the program),
+Run `CryptLok-Setup-0.2.1.exe`. Windows 10/11, 64-bit. GnuPG 2.5 is included (in `GnuPG\bin` next to the program),
 so nothing else is needed except VeraCrypt for the Disk pages. What's new: `CHANGELOG.md`.
 
 **Windows SmartScreen.** The installer is not code-signed yet, so Windows may show "Windows protected your PC" the first
 times it is downloaded. Click **More info**, check the publisher/file name, then **Run anyway**. Before that, check
 that the download is the real one: compare its SHA-256 with `SHA256SUMS.txt` published next to it. In PowerShell:
 
-    Get-FileHash .\CryptLok-Setup-0.2.0.exe
+    Get-FileHash .\CryptLok-Setup-0.2.1.exe
 
 The hash printed must match the one in `SHA256SUMS.txt` (case does not matter). If it does not, delete the file.
 
@@ -113,6 +113,9 @@ hand-over). Used by the installer: `/installshell` (add the Explorer entries, no
 ## Release
 `build.cmd`, then `installer\build-installer.cmd` → `out\CryptLok-Setup-<version>.exe` and `out\SHA256SUMS.txt`.
 Publish both files together.
+
+## Credits
+- **Astro** suggested keyring backup, keyring location and passphrase caching (0.2.0).
 
 ## Decisions
 - **No email-client integration** (the old Messaging/proxy feature). It was fragile in the original product and modern

@@ -268,9 +268,21 @@ def app_icon(n):
 _padlock = os.path.join(ROOT, 'program icons', 'padlock.ico')
 if os.path.exists(_padlock):
     import shutil as _sh
-    _sh.copyfile(_padlock, os.path.join(OUT, 'app.ico'))
+    _dst = os.path.join(OUT, 'app.ico')
+    if not (os.path.exists(_dst) and open(_dst, 'rb').read() == open(_padlock, 'rb').read()):
+        _sh.copyfile(_padlock, _dst)
     _big = max((Image.open(_padlock).ico.getimage(s) for s in Image.open(_padlock).ico.sizes()), key=lambda im: im.size[0])
-    _big.convert('RGBA').resize((72, 72), Image.LANCZOS).save(os.path.join(OUT, 'about-72.png'))
+    _big = _big.convert('RGBA')
+    _big.resize((72, 72), Image.LANCZOS).save(os.path.join(OUT, 'about-72.png'))
+    # tray: the padlock cropped to its edges, so it fills the tray slot like the other icons
+    _tight = _big.crop(_big.getbbox())
+    _side = max(_tight.size)
+    _sq = Image.new('RGBA', (_side, _side), (0, 0, 0, 0))
+    _sq.paste(_tight, ((_side - _tight.size[0]) // 2, (_side - _tight.size[1]) // 2))
+    _sizes = [48, 40, 32, 24, 20, 16]
+    _frames = [_sq.resize((n, n), Image.LANCZOS) for n in _sizes]
+    _frames[0].save(os.path.join(OUT, 'tray.ico'), sizes=[(n, n) for n in _sizes], append_images=_frames[1:])
+    rc.append('TRAYICON ICON "assets\\\\tray.ico"')
 else:
     icons = [app_icon(n) for n in (256, 48, 32, 24, 16)]
     icons[0].save(os.path.join(OUT, 'app.ico'), sizes=[(256, 256), (48, 48), (32, 32), (24, 24), (16, 16)], append_images=icons[1:])
@@ -351,8 +363,8 @@ with open(os.path.join(ROOT, 'CryptLok.Assets.rc'), 'w') as f:
     f.write('\n'.join(rc) + '\n')
     f.write('1 24 "CryptLok.manifest"\n')
     f.write('''1 VERSIONINFO
-FILEVERSION 0,2,0,0
-PRODUCTVERSION 0,2,0,0
+FILEVERSION 0,2,1,0
+PRODUCTVERSION 0,2,1,0
 FILEFLAGSMASK 0x3fL
 FILEOS 0x4L
 FILETYPE 0x1L
@@ -363,12 +375,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Level103"
       VALUE "FileDescription", "CryptLok - OpenPGP Encryption Suite"
-      VALUE "FileVersion", "0.2.0.0"
+      VALUE "FileVersion", "0.2.1.0"
       VALUE "InternalName", "CryptLok"
       VALUE "LegalCopyright", "Copyright (C) 2026 Brian Hoffman"
       VALUE "OriginalFilename", "CryptLok.exe"
       VALUE "ProductName", "CryptLok"
-      VALUE "ProductVersion", "0.2.0.0"
+      VALUE "ProductVersion", "0.2.1.0"
     END
   END
   BLOCK "VarFileInfo"

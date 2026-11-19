@@ -1,6 +1,12 @@
 # Changelog
 
+## 0.2.1 — 2026-11-19
+- Key Management pages: the text wraps to the window width and the layout is more compact.
+- New Virtual Disk page: fields start further left and the folder box and key list fit narrower windows.
+- Tray icon: the padlock is cropped to fill the tray slot, so it is as big as other tray icons.
+
 ## 0.2.0 — 2026-11-18
+Thanks to **Astro** for suggesting keyring backup, keyring location and passphrase caching.
 
 **Key Management** (new section in the sidebar)
 - **Backup Keyring:** saves your public and private keys, trust settings and CryptLok settings to one `.zip` file

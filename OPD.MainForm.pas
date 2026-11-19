@@ -1965,6 +1965,7 @@ procedure TMainForm.BuildTray;
   end;
 var
   M: TMenuItem;
+  H: THandle;
 begin
   FTrayMenu := TPopupMenu.Create(Self);
   Mi(APP_NAME).Enabled := False;
@@ -1982,7 +1983,12 @@ begin
   FClearCacheItem := Mi('Clear &Passphrase Cache', ClearCacheClick);
   FTrayMenu.OnPopup := TrayPopup;
   FTray := TTrayIcon.Create(Self);
-  FTray.Icon.Assign(Application.Icon);   { the combination lock, same as the program icon }
+  { the padlock cropped to its edges (TRAYICON) so it is as big as the other tray icons; else the program icon }
+  H := LoadImage(HInstance, 'TRAYICON', IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
+  if H <> 0 then
+    FTray.Icon.Handle := H
+  else
+    FTray.Icon.Assign(Application.Icon);
   FTray.Hint := APP_NAME;
   FTray.PopupMenu := FTrayMenu;
   FTray.OnDblClick := TrayOpen;
