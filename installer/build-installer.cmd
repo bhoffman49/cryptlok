@@ -9,6 +9,7 @@ if "%ISCC%"=="" (
   exit /b 1
 )
 "%ISCC%" "%~dp0CryptLok.iss" || exit /b 1
-rem checksum file to publish next to the download (sha256sum format: hash, two spaces, file name)
-powershell -NoProfile -Command "Get-ChildItem '%~dp0..\out\CryptLok-Setup-*.exe' | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $_.Name } | Set-Content -Encoding ascii '%~dp0..\out\SHA256SUMS.txt'"
+rem checksum file to publish next to the download (sha256sum format: hash, two spaces, file name); only the
+rem installer just built, not older versions still in out\
+powershell -NoProfile -Command "Get-ChildItem '%~dp0..\out\CryptLok-Setup-*.exe' | Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $_.Name } | Set-Content -Encoding ascii '%~dp0..\out\SHA256SUMS.txt'"
 type "%~dp0..\out\SHA256SUMS.txt"

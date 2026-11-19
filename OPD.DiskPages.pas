@@ -100,7 +100,7 @@ implementation
 
 uses
   System.IniFiles, System.IOUtils, System.StrUtils, System.Math, Winapi.Windows, Winapi.ShlObj,
-  Vcl.Dialogs, Winapi.ShellAPI, OPD.PassphraseDialog, OPD.RecipientDialog;
+  Vcl.Dialogs, Winapi.ShellAPI, OPD.PassphraseDialog, OPD.RecipientDialog, OPD.PassCache;
 
 const
   VERACRYPT_DOWNLOAD = 'https://veracrypt.fr/en/Downloads.html';
@@ -281,7 +281,7 @@ end;
 function TDiskController.Mount(AIndex: Integer): Boolean;
 var
   E: TDiskEntry;
-  L: string;
+  L, OwnId: string;
   Letter: Char;
   Pass: TBytes;
   Res: TDiskResult;
@@ -303,15 +303,17 @@ begin
     end;
     Letter := L[1];
   end;
+  OwnId := OwnKeyFor(FEngine.ListKeys, FEngine.FileRecipients(TVeraCrypt.KeyFilePath(E.Path)));
   Tries := 0;
   repeat
     Inc(Tries);
     Application.BringToFront;
-    Mr := AskPassphrase(FOwner, E.Name,
-      'Enter the passphrase of your key to open this disk.', False, Pass);
+    Mr := AskPassCached(FOwner, OwnId, E.Name,
+      'Enter the passphrase of your key to open this disk.', Pass);
     if Mr <> mrOk then Exit;
     try
       RunBusy(procedure begin Res := FVc.Mount(E.Path, Letter, Pass); end);
+      NotePassphrase(OwnId, Pass, Res.Ok, Res.Error = 'Wrong passphrase');
     finally
       WipeBytes(Pass);
     end;

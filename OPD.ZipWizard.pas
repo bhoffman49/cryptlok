@@ -20,7 +20,7 @@ implementation
 
 uses
   System.StrUtils, System.Math, System.IOUtils, OPD.RecipientDialog, OPD.PassphraseDialog,
-  OPD.PgpZip, OPD.Tar, OPD.ShredDialog, OPD.MasterKeys;
+  OPD.PgpZip, OPD.Tar, OPD.ShredDialog, OPD.MasterKeys, OPD.PassCache;
 
 type
   TZipPage = (zpFiles, zpEncrypt, zpKeys, zpPass, zpSign, zpProgress);
@@ -1209,8 +1209,8 @@ begin
           Break;
         end;
       end;
-    R := AskPassphrase(Self, SignKey.DisplayName + ' ' + SignKey.ShortId,
-      'Enter the passphrase of the signing key.', False, Pw);
+    R := AskPassCached(Self, SignKey.KeyId, SignKey.DisplayName + ' ' + SignKey.ShortId,
+      'Enter the passphrase of the signing key.', Pw);
     if R <> mrOk then
     begin
       WipeBytes(Req.SymPass);
@@ -1252,6 +1252,8 @@ begin
       end);
   finally
     FTimer.Enabled := False;
+    if Req.Signer <> '' then
+      NotePassphrase(KeyIdOf(Req.Signer), Req.SignerPass, Res.Ok, Res.WrongPassphrase);
     WipeBytes(Req.SymPass);
     WipeBytes(Req.SignerPass);
     Tmp := FPass1.Text;

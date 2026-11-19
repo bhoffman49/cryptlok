@@ -22,7 +22,7 @@ implementation
 
 uses
   System.StrUtils, System.IOUtils, System.Generics.Collections, Winapi.Windows, Vcl.Controls, Vcl.Forms,
-  Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Dialogs, Vcl.Graphics, OPD.Theme, OPD.PassphraseDialog;
+  Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Dialogs, Vcl.Graphics, OPD.Theme, OPD.PassphraseDialog, OPD.PassCache;
 
 function IsSignatureFile(const AFile: string): Boolean;
 var
@@ -249,12 +249,13 @@ begin
     Tries := 0;
     repeat
       Inc(Tries);
-      Mr := AskPassphrase(AOwner, Signer.DisplayName + ' ' + Signer.ShortId,
-        'Enter the passphrase of your key to sign the file.', False, Pass);
+      Mr := AskPassCached(AOwner, Signer.KeyId, Signer.DisplayName + ' ' + Signer.ShortId,
+        'Enter the passphrase of your key to sign the file.', Pass);
       if Mr <> mrOk then Exit;
       Screen.Cursor := crHourGlass;
       try
         R := AEngine.SignFile(Target, Signer.Fingerprint, Out_, Armor, Pass);
+        NotePassphrase(Signer.KeyId, Pass, R.Ok, R.WrongPassphrase);
       finally
         Screen.Cursor := crDefault;
         WipeBytes(Pass);

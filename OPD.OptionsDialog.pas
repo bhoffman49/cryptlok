@@ -14,7 +14,7 @@ procedure ShowOptions(AOwner: TComponent; const AEngine: IKeyEngine);
 implementation
 
 uses
-  System.StrUtils, Vcl.Dialogs, OPD.MasterKeys, OPD.RecipientDialog, OPD.VeraCrypt;
+  System.StrUtils, Vcl.Dialogs, OPD.MasterKeys, OPD.RecipientDialog, OPD.VeraCrypt, OPD.PassCache;
 
 const
   EXPLAIN =
@@ -37,7 +37,11 @@ type
     FAddVersion: TCheckBox;
     FComment: TEdit;
     FCloseToTray: TCheckBox;
+    FCacheOff, FCacheSession, FCacheTimed: TRadioButton;
+    FCacheMin: TComboBox;
     FAdd, FRemove: TButton;
+    procedure ClearCacheClick(Sender: TObject);
+    procedure CacheModeClick(Sender: TObject);
     procedure VcBrowseClick(Sender: TObject);
     procedure VcChanged(Sender: TObject);
     procedure AddClick(Sender: TObject);
@@ -52,10 +56,29 @@ type
     destructor Destroy; override;
   end;
 
+function CacheMinutesAt(AIndex: Integer): Integer;
+const
+  M: array[0..7] of Integer = (2, 5, 15, 30, 60, 120, 240, 480);
+begin
+  if (AIndex >= 0) and (AIndex <= High(M)) then Result := M[AIndex] else Result := 30;
+end;
+
+procedure TOptionsForm.CacheModeClick(Sender: TObject);
+begin
+  FCacheMin.Enabled := FCacheTimed.Checked;
+end;
+
+procedure TOptionsForm.ClearCacheClick(Sender: TObject);
+begin
+  ClearPassCache;
+  Application.MessageBox('Cached passphrases were cleared.', 'Passphrase', MB_OK or MB_ICONINFORMATION);
+end;
+
 constructor TOptionsForm.CreateDlg(AOwner: TComponent; const AEngine: IKeyEngine);
 var
   Tabs: TPageControl;
-  Sheet, Sheet2, Sheet3, Sheet4, Sheet5: TTabSheet;
+  Sheet, Sheet2, Sheet3, Sheet4, Sheet5, Sheet6: TTabSheet;
+  Mins: Integer;
   AddVer: Boolean;
   Cmt: string;
   K: TKeyInfo;
@@ -167,6 +190,53 @@ begin
   L.AutoSize := False; L.WordWrap := True; L.Transparent := False; L.Color := clBtnFace; L.Font.Color := clGrayText;
   L.Caption := 'The tray icon holds the clipboard commands (encrypt, decrypt, sign). Turn this off to make X quit ' +
     'the program completely. File > Exit and the tray menu always quit.';
+
+  { passphrase caching, as in the classic PGP tray }
+  Sheet6 := TTabSheet.Create(Tabs);
+  Sheet6.PageControl := Tabs;
+  Sheet6.Caption := 'Passphrase';
+  L := TLabel.Create(Self); L.Parent := Sheet6; L.SetBounds(14, 14, 450, 20);
+  L.Caption := 'Passphrase caching'; L.Font.Style := [fsBold]; L.Transparent := False; L.Color := clBtnFace;
+  L := TLabel.Create(Self); L.Parent := Sheet6; L.SetBounds(14, 38, 450, 50);
+  L.AutoSize := False; L.WordWrap := True; L.Transparent := False; L.Color := clBtnFace;
+  L.Caption := 'CryptLok can remember a passphrase after you have entered it once, so decrypting and signing ' +
+    'with the same key does not ask again.';
+  FCacheOff := TRadioButton.Create(Self); FCacheOff.Parent := Sheet6; FCacheOff.SetBounds(14, 92, 450, 20);
+  FCacheOff.Caption := 'Do not cache passphrases (ask every time)';
+  FCacheSession := TRadioButton.Create(Self); FCacheSession.Parent := Sheet6; FCacheSession.SetBounds(14, 118, 450, 20);
+  FCacheSession.Caption := 'Cache passphrases while I am logged on';
+  FCacheTimed := TRadioButton.Create(Self); FCacheTimed.Parent := Sheet6; FCacheTimed.SetBounds(14, 146, 180, 20);
+  FCacheTimed.Caption := 'Cache passphrases for';
+  FCacheMin := TComboBox.Create(Self); FCacheMin.Parent := Sheet6; FCacheMin.SetBounds(196, 144, 130, 24);
+  FCacheMin.Style := csDropDownList;
+  FCacheMin.Items.AddStrings(['2 minutes', '5 minutes', '15 minutes', '30 minutes', '60 minutes', '120 minutes',
+    '4 hours', '8 hours']);
+  FCacheOff.OnClick := CacheModeClick;
+  FCacheSession.OnClick := CacheModeClick;
+  FCacheTimed.OnClick := CacheModeClick;
+  case PassCacheMode of
+    pcSession: FCacheSession.Checked := True;
+    pcMinutes: FCacheTimed.Checked := True;
+  else
+    FCacheOff.Checked := True;
+  end;
+  Mins := PassCacheMinutes;
+  FCacheMin.ItemIndex := 3;
+  for K2 := 0 to FCacheMin.Items.Count - 1 do
+    if CacheMinutesAt(K2) = Mins then
+      FCacheMin.ItemIndex := K2;
+  CacheModeClick(nil);
+  L := TLabel.Create(Self); L.Parent := Sheet6; L.SetBounds(14, 184, 450, 64);
+  L.AutoSize := False; L.WordWrap := True; L.Transparent := False; L.Color := clBtnFace; L.Font.Color := clGrayText;
+  L.Caption := 'Only passphrases that worked are kept, encrypted in memory and only inside CryptLok; they are ' +
+    'forgotten when CryptLok exits. Changing a key''s passphrase, photos and preferences always ask. ' +
+    'The tray menu has Clear Passphrase Cache.';
+  B := TButton.Create(Self); B.Parent := Sheet6; B.SetBounds(14, 256, 170, 26);
+  B.Caption := 'Clear Cache Now'; B.OnClick := ClearCacheClick;
+  { testing aid: /opttab:N opens tab N }
+  for K2 := 1 to ParamCount do
+    if LowerCase(ParamStr(K2)).StartsWith('/opttab:') then
+      Tabs.ActivePageIndex := StrToIntDef(Copy(ParamStr(K2), 9, 2), 0);
 
   B := TButton.Create(Self); B.Parent := Self; B.SetBounds(312, 402, 84, 28);
   B.Caption := 'OK'; B.Default := True; B.OnClick := OkClick;
@@ -322,6 +392,12 @@ begin
   TVeraCrypt.SetManualFolder(FEngine, FVcFolder.Text);
   SaveArmorSettings(FEngine, FAddVersion.Checked, FComment.Text);
   SaveCloseToTray(FEngine, FCloseToTray.Checked);
+  if FCacheSession.Checked then
+    SavePassCachePolicy(FEngine, pcSession, CacheMinutesAt(FCacheMin.ItemIndex))
+  else if FCacheTimed.Checked then
+    SavePassCachePolicy(FEngine, pcMinutes, CacheMinutesAt(FCacheMin.ItemIndex))
+  else
+    SavePassCachePolicy(FEngine, pcOff, CacheMinutesAt(FCacheMin.ItemIndex));
   ApplyArmorSettings(FEngine);
   M.Enabled := FUse.Checked;
   SetLength(M.Fingerprints, FPrints.Count);

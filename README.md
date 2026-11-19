@@ -53,6 +53,10 @@ All artwork is original or licensed; no vendor logos or artwork are used. Writte
   double-click a `.sig`/`.asc` signature, or use Tools > Verify a Signature File, to check it against the file and see who
   signed it and when. Explorer Integration adds "Sign with CryptLok..." and a `.sig` file type with its own icon.
 - **Key signing**: Sign Key certifies someone's key with one of yours; Key Properties > Signatures lists who has signed a key.
+- **Key Management** (sidebar): Backup Keyring saves keys, trust and settings to one .zip (and restores one); Keyring
+  Location keeps the keyring in any folder, e.g. on a USB stick (copied, checked with GnuPG, then CryptLok restarts).
+- **Passphrase caching** (Tools > Options > Passphrase): off, while logged on, or for a set time; only passphrases that
+  worked, encrypted in memory inside CryptLok; Clear Passphrase Cache in the tray menu.
 - **Message headers** (Tools > Options > Messages): the PGP blocks CryptLok makes for the clipboard and for exported keys carry
   `Version: CryptLok x.y.z` and an optional one-line `Comment:` of your choosing. Both can be switched off; they are not part of
   what is signed or encrypted.
@@ -66,14 +70,14 @@ All artwork is original or licensed; no vendor logos or artwork are used. Writte
   Not done yet: passphrase-only + signing, Sign Only.
 
 ## Installing
-Run `CryptLok-Setup-0.1.0.exe`. Windows 10/11, 64-bit. GnuPG 2.5 is included (in `GnuPG\bin` next to the program),
+Run `CryptLok-Setup-0.2.0.exe`. Windows 10/11, 64-bit. GnuPG 2.5 is included (in `GnuPG\bin` next to the program),
 so nothing else is needed except VeraCrypt for the Disk pages. What's new: `CHANGELOG.md`.
 
 **Windows SmartScreen.** The installer is not code-signed yet, so Windows may show "Windows protected your PC" the first
 times it is downloaded. Click **More info**, check the publisher/file name, then **Run anyway**. Before that, check
 that the download is the real one: compare its SHA-256 with `SHA256SUMS.txt` published next to it. In PowerShell:
 
-    Get-FileHash .\CryptLok-Setup-0.1.0.exe
+    Get-FileHash .\CryptLok-Setup-0.2.0.exe
 
 The hash printed must match the one in `SHA256SUMS.txt` (case does not matter). If it does not, delete the file.
 
@@ -89,7 +93,8 @@ there once to get the signature icon.
 - VeraCrypt 1.26+ in `C:\Program Files\VeraCrypt` or a folder chosen in Options > Disk (only for the Disk feature).
 
 ## Data location
-`%USERPROFILE%\.cryptlok\` — `gnupg\` (isolated keyring, never your normal GnuPG home) and `settings.ini`.
+`%USERPROFILE%\.cryptlok\` — `gnupg\` (isolated keyring, never your normal GnuPG home) and `settings.ini`, unless Key
+Management > Keyring Location moved them (recorded in `%USERPROFILE%\.cryptlok\location.ini`).
 Deliberately **not** under AppData: programs started from a packaged (MSIX) app such as the Claude desktop app get
 AppData redirected to a private folder.
 
@@ -100,7 +105,7 @@ Installer: copy the GnuPG 2.5 runtime (the `bin` folder of a GnuPG/Gpg4win insta
 
 ## Command-line switches (testing aids)
 `/home:<dir>`, `/import:<file;file>`, `/clip:<encrypt|sign|encryptsign|decrypt|clear>`,
-`/page:<newdisk|mydisks|adduser|recipients>`, `/dlg:<props|newkey|zip|about|shell|shred|wipe|viewer>`, `/tray` (start hidden),
+`/page:<newdisk|mydisks|adduser|recipients|backup|location>`, `/dlg:<props|newkey|zip|about|shell|shred|wipe|viewer|options>`, `/opttab:N`, `/tray` (start hidden),
 `/zip:<path;path>` (open the Zip wizard with items), `/zipopen:<file.pgp>`, `/zipstep:<0-5>` and
 `/zipauto:<out.pgp>` (wizard test aids), `/signfile:<file>` (Sign a File window), `/proptab:N` `/listtab:N` (Key Properties tabs), `/multi` (skip the single-instance
 hand-over). Used by the installer: `/installshell` (add the Explorer entries, no .pgp default) and `/removeshell`.

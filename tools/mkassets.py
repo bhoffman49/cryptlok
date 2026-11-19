@@ -264,21 +264,36 @@ def app_icon(n):
     return img.resize((n, n), Image.LANCZOS)
 
 
-icons = [app_icon(n) for n in (256, 48, 32, 24, 16)]
-icons[0].save(os.path.join(OUT, 'app.ico'), sizes=[(256, 256), (48, 48), (32, 32), (24, 24), (16, 16)], append_images=icons[1:])
-app_icon(72).save(os.path.join(OUT, 'about-72.png'))
+# program and tray icon: the hand-made padlock when present (Brian's own art), else the drawn one
+_padlock = os.path.join(ROOT, 'program icons', 'padlock.ico')
+if os.path.exists(_padlock):
+    import shutil as _sh
+    _sh.copyfile(_padlock, os.path.join(OUT, 'app.ico'))
+    _big = max((Image.open(_padlock).ico.getimage(s) for s in Image.open(_padlock).ico.sizes()), key=lambda im: im.size[0])
+    _big.convert('RGBA').resize((72, 72), Image.LANCZOS).save(os.path.join(OUT, 'about-72.png'))
+else:
+    icons = [app_icon(n) for n in (256, 48, 32, 24, 16)]
+    icons[0].save(os.path.join(OUT, 'app.ico'), sizes=[(256, 256), (48, 48), (32, 32), (24, 24), (16, 16)], append_images=icons[1:])
+    app_icon(72).save(os.path.join(OUT, 'about-72.png'))
 rc.append('ABOUT_ICON RCDATA "assets\\\\about-72.png"')
 
 # wizard banner (designed by hand; copied in when present)
 import shutil
+
+def copy_if_changed(src, dst):
+    """copy unless dst already holds the same bytes (a file Explorer has open cannot be rewritten)"""
+    if os.path.exists(dst) and open(src, 'rb').read() == open(dst, 'rb').read():
+        return
+    shutil.copyfile(src, dst)
+
 _banner = os.path.join(ROOT, 'program icons', 'banner.png')
 if os.path.exists(_banner):
-    shutil.copyfile(_banner, os.path.join(OUT, 'banner.png'))
+    copy_if_changed(_banner, os.path.join(OUT, 'banner.png'))
     rc.append('WIZ_BANNER RCDATA "assets\\\\banner.png"')
 
 _abanner = os.path.join(ROOT, 'program icons', 'about-banner.png')
 if os.path.exists(_abanner):
-    shutil.copyfile(_abanner, os.path.join(OUT, 'about-banner.png'))
+    copy_if_changed(_abanner, os.path.join(OUT, 'about-banner.png'))
     rc.append('ABOUT_BANNER RCDATA "assets\\\\about-banner.png"')
 
 _shield = os.path.join(ROOT, 'program icons', 'shield-hollow-512.png')
@@ -289,13 +304,13 @@ if os.path.exists(_shield):
 # self-decrypting archive: default icon and the stub program (built first by build.cmd)
 _sdaico = os.path.join(ROOT, 'program icons', 'sda.ico')
 if os.path.exists(_sdaico):
-    shutil.copyfile(_sdaico, os.path.join(OUT, 'sda.ico'))
+    copy_if_changed(_sdaico, os.path.join(OUT, 'sda.ico'))
     rc.append('SDA_ICON RCDATA "assets\\\\sda.ico"')
 rc.append('SDA_STUB RCDATA "out\\\\CryptLokSda.exe"')
 
 _zipico = os.path.join(ROOT, 'program icons', 'zip.ico')
 if os.path.exists(_zipico):
-    shutil.copyfile(_zipico, os.path.join(OUT, 'zipfile.ico'))
+    copy_if_changed(_zipico, os.path.join(OUT, 'zipfile.ico'))
     rc.append('101 ICON "assets\\\\zipfile.ico"')
 
 # detached signature file (.sig): a page with a hand-written signature and a green "verified" badge
@@ -325,7 +340,7 @@ def sig_icon(n):
 # the designed icon (Axialis pack, 'program icons\sigfile.ico') wins; the generated one is the fallback
 _sigico = os.path.join(ROOT, 'program icons', 'sigfile.ico')
 if os.path.exists(_sigico):
-    shutil.copyfile(_sigico, os.path.join(OUT, 'sigfile.ico'))
+    copy_if_changed(_sigico, os.path.join(OUT, 'sigfile.ico'))
 else:
     _sigs = [sig_icon(n) for n in (256, 48, 32, 24, 16)]
     _sigs[0].save(os.path.join(OUT, 'sigfile.ico'), sizes=[(256, 256), (48, 48), (32, 32), (24, 24), (16, 16)], append_images=_sigs[1:])
@@ -336,8 +351,8 @@ with open(os.path.join(ROOT, 'CryptLok.Assets.rc'), 'w') as f:
     f.write('\n'.join(rc) + '\n')
     f.write('1 24 "CryptLok.manifest"\n')
     f.write('''1 VERSIONINFO
-FILEVERSION 0,1,0,0
-PRODUCTVERSION 0,1,0,0
+FILEVERSION 0,2,0,0
+PRODUCTVERSION 0,2,0,0
 FILEFLAGSMASK 0x3fL
 FILEOS 0x4L
 FILETYPE 0x1L
@@ -348,12 +363,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Level103"
       VALUE "FileDescription", "CryptLok - OpenPGP Encryption Suite"
-      VALUE "FileVersion", "0.1.0.0"
+      VALUE "FileVersion", "0.2.0.0"
       VALUE "InternalName", "CryptLok"
       VALUE "LegalCopyright", "Copyright (C) 2026 Brian Hoffman"
       VALUE "OriginalFilename", "CryptLok.exe"
       VALUE "ProductName", "CryptLok"
-      VALUE "ProductVersion", "0.1.0.0"
+      VALUE "ProductVersion", "0.2.0.0"
     END
   END
   BLOCK "VarFileInfo"

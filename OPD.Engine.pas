@@ -290,13 +290,20 @@ procedure WipeBytes(var ABytes: TBytes);
 { Overwrites the characters of a string in place (best effort) and empties it. }
 procedure WipeString(var S: string);
 function PassphraseToBytes(const S: string): TBytes;
+{ The GnuPG home inside the current data folder (CryptLokDataFolder + '\gnupg'). }
 function DefaultHomeDir: string;
+{ %USERPROFILE%\.cryptlok - the default data folder (keyring in gnupg\, settings.ini) and home of location.ini }
+function DefaultDataFolder: string;
+{ %USERPROFILE%\.cryptlok\location.ini: [Keyring] Folder=<another data folder>, written by Key Management }
+function LocationFile: string;
+{ The data folder in use: the one in location.ini, else the default. }
+function CryptLokDataFolder: string;
 function AlgoLabel(AAlgo: Integer): string;
 
 implementation
 
 uses
-  Winapi.Windows, System.DateUtils, System.StrUtils, System.Math;
+  Winapi.Windows, System.DateUtils, System.StrUtils, System.Math, System.IniFiles;
 
 procedure WipeBytes(var ABytes: TBytes);
 begin
@@ -322,15 +329,47 @@ begin
   Result := TEncoding.UTF8.GetBytes(S);
 end;
 
-function DefaultHomeDir: string;
+function DefaultDataFolder: string;
 begin
   { NOT under AppData: programs started from a packaged (MSIX) app such as the
     Claude desktop app get AppData redirected to a private folder, which would
     give them a different (empty) keyring than the same exe started normally. }
-  Result := GetEnvironmentVariable('USERPROFILE');
+  { testing aid: CRYPTLOK_TEST_PROFILE replaces %USERPROFILE% for the data folder only, so tests never touch the
+    real keyring or location.ini (overriding USERPROFILE itself confuses GnuPG's agent) }
+  Result := GetEnvironmentVariable('CRYPTLOK_TEST_PROFILE');
+  if Result = '' then
+    Result := GetEnvironmentVariable('USERPROFILE');
   if Result = '' then
     Result := ExtractFilePath(ParamStr(0));
-  Result := IncludeTrailingPathDelimiter(Result) + '.cryptlok\gnupg';
+  Result := IncludeTrailingPathDelimiter(Result) + '.cryptlok';
+end;
+
+function LocationFile: string;
+begin
+  Result := IncludeTrailingPathDelimiter(DefaultDataFolder) + 'location.ini';
+end;
+
+function CryptLokDataFolder: string;
+var
+  Ini: TIniFile;
+begin
+  Result := '';
+  if FileExists(LocationFile) then
+  begin
+    Ini := TIniFile.Create(LocationFile);
+    try
+      Result := Trim(Ini.ReadString('Keyring', 'Folder', ''));
+    finally
+      Ini.Free;
+    end;
+  end;
+  if Result = '' then
+    Result := DefaultDataFolder;
+end;
+
+function DefaultHomeDir: string;
+begin
+  Result := IncludeTrailingPathDelimiter(CryptLokDataFolder) + 'gnupg';
 end;
 
 { ---- TKeyInfo ----------------------------------------------------------- }

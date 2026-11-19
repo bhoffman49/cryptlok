@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 — 2026-11-18
+
+**Key Management** (new section in the sidebar)
+- **Backup Keyring:** saves your public and private keys, trust settings and CryptLok settings to one `.zip` file
+  (private keys stay protected by their passphrases). **Restore from a Backup** unpacks a backup into a folder you
+  choose and switches CryptLok to it; your current keyring is left untouched.
+- **Keyring Location:** keep the keyring in any folder you choose, for example on another drive or a USB stick.
+  CryptLok copies it, checks the copy with GnuPG, restarts with it and offers to remove the old copy. A folder that
+  already holds a CryptLok keyring is used as it is. If a keyring on a removable drive is not connected at start,
+  CryptLok asks you to connect it instead of opening an empty keyring.
+
+**Passphrase caching** (Tools > Options > Passphrase), as in the classic PGP tray
+- Do not cache (default), cache while you are logged on, or cache for 2 minutes up to 8 hours.
+- Only passphrases that worked are kept, encrypted in memory inside CryptLok and forgotten when it exits.
+  Used for decrypting, signing, Zip, Viewer, signing files and keys, and mounting disks; changing a passphrase,
+  photos and preferences always ask. **Clear Passphrase Cache** in the tray menu forgets them at once.
+
+**Look**
+- New padlock program and tray icon.
+
 ## 0.1.0 — 2026-11-17, first public release
 
 CryptLok is my attempt to bring back the look and feel of the legacy PGP Desktop suite, built on the free GnuPG

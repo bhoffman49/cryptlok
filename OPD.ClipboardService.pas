@@ -48,7 +48,7 @@ implementation
 uses
   System.IniFiles, System.StrUtils, Vcl.Clipbrd, Vcl.Forms, Vcl.StdCtrls, Vcl.Graphics,
   System.IOUtils, Winapi.Windows, OPD.Theme, OPD.PassphraseDialog, OPD.RecipientDialog, OPD.MasterKeys,
-  OPD.ImportDialog, OPD.ViewerDialog;
+  OPD.ImportDialog, OPD.ViewerDialog, OPD.PassCache;
 
 { A public or private key block (not an encrypted message) is imported, not decrypted. }
 function TClipboardService.ImportKeyBlock(const AText: string): Boolean;
@@ -209,13 +209,15 @@ begin
     Tries := 0;
     repeat
       Inc(Tries);
-      Mr := AskPass(SignerLabel, 'Enter the passphrase of your signing key.', Pass);
+      Application.BringToFront;
+      Mr := AskPassCached(FOwner, KeyIdOf(Signer), SignerLabel, 'Enter the passphrase of your signing key.', Pass);
       if Mr <> mrOk then Exit;
       try
         if AOp = cpSign then
           Res := FEngine.SignText(Text, Signer, Pass)
         else
           Res := FEngine.EncryptText(Text, Recips, Signer, Pass);
+        NotePassphrase(KeyIdOf(Signer), Pass, Res.Ok, Res.WrongPassphrase);
       finally
         WipeBytes(Pass);
       end;
@@ -242,7 +244,7 @@ end;
 
 procedure TClipboardService.Decrypt;
 var
-  Text, KeyLabel: string;
+  Text, KeyLabel, OwnId: string;
   Rec: TArray<string>;
   Keys: TKeyInfoArray;
   K, S, R: Integer;
@@ -277,14 +279,16 @@ begin
             if SameText(Keys[K].SubKeys[S].KeyId, Rec[R]) then
               KeyLabel := Keys[K].DisplayName + ' ' + Keys[K].ShortId;
         end;
+    OwnId := OwnKeyFor(Keys, Rec);
     Tries := 0;
     repeat
       Inc(Tries);
-      Mr := AskPassphraseFor(FOwner, KeyLabel, 'Enter the passphrase to decrypt this message.',
+      Mr := AskPassForCached(FOwner, OwnId, KeyLabel, 'Enter the passphrase to decrypt this message.',
         DescribeRecipients(Keys, Rec), Pass);
       if Mr <> mrOk then Exit;
       try
         Res := FEngine.DecryptText(Text, Pass);
+        NotePassphrase(OwnId, Pass, Res.Ok, Res.WrongPassphrase);
       finally
         WipeBytes(Pass);
       end;

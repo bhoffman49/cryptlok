@@ -25,7 +25,7 @@ procedure ShowTextDiff(AOwner: TComponent; const AOriginal, AViewed: string);
 implementation
 
 uses
-  System.StrUtils, System.IOUtils, Vcl.Clipbrd, Vcl.ComCtrls, Vcl.Dialogs, OPD.PassphraseDialog, OPD.TextDiff;
+  System.StrUtils, System.IOUtils, Vcl.Clipbrd, Vcl.ComCtrls, Vcl.Dialogs, OPD.PassphraseDialog, OPD.TextDiff, OPD.PassCache;
 
 function LooksLikeText(const ABytes: TBytes): Boolean;
 var
@@ -254,7 +254,7 @@ end;
 
 procedure ViewClipboard(AOwner: TComponent; const AEngine: IKeyEngine);
 var
-  Text: string;
+  Text, OwnId: string;
   Pass: TBytes;
   R: TCryptoResult;
   M: TModalResult;
@@ -287,12 +287,14 @@ begin
         Exit;
       end;
     end;
-    M := AskPassphraseFor(AOwner, 'the message on the clipboard',
+    OwnId := OwnKeyFor(AEngine.ListKeys, AEngine.MessageRecipients(Text));
+    M := AskPassForCached(AOwner, OwnId, 'the message on the clipboard',
       'Enter the passphrase of your key, or the passphrase of the message.',
       DescribeRecipients(AEngine.ListKeys, AEngine.MessageRecipients(Text)), Pass);
     if M <> mrOk then Exit;
     try
       R := AEngine.DecryptText(Text, Pass);
+      NotePassphrase(OwnId, Pass, R.Ok, R.WrongPassphrase);
     finally
       WipeBytes(Pass);
     end;

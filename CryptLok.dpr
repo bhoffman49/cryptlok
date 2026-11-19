@@ -12,6 +12,7 @@ uses
   OPD.Engine in 'OPD.Engine.pas',
   OPD.MasterKeys in 'OPD.MasterKeys.pas',
   OPD.PassphraseDialog in 'OPD.PassphraseDialog.pas',
+  OPD.PassCache in 'OPD.PassCache.pas',
   OPD.ImportDialog in 'OPD.ImportDialog.pas',
   OPD.ClipboardService in 'OPD.ClipboardService.pas',
   OPD.RecipientDialog in 'OPD.RecipientDialog.pas',
@@ -36,6 +37,7 @@ uses
   OPD.ShredDialog in 'OPD.ShredDialog.pas',
   OPD.FreeSpace in 'OPD.FreeSpace.pas',
   OPD.WipeDialog in 'OPD.WipeDialog.pas',
+  OPD.KeyringPages in 'OPD.KeyringPages.pas',
   OPD.MainForm in 'OPD.MainForm.pas';
 
 var
@@ -45,6 +47,8 @@ var
   Args: string;
   CD: TCopyDataStruct;
   Res: DWORD_PTR;
+  Waiting: THandle;
+  HomeArg: Boolean;
 
 begin
   { used by the uninstaller: remove the Explorer menu entries this copy added, then quit }
@@ -65,6 +69,29 @@ begin
     end;
     Exit;
   end;
+  { restarted by Key Management (keyring moved): wait for the old CryptLok to finish before taking over }
+  for I := 1 to ParamCount do
+    if LowerCase(ParamStr(I)).StartsWith('/waitpid:') then
+    begin
+      Waiting := OpenProcess(SYNCHRONIZE, False, StrToIntDef(Copy(ParamStr(I), 10, 12), 0));
+      if Waiting <> 0 then
+      begin
+        WaitForSingleObject(Waiting, 20000);
+        CloseHandle(Waiting);
+      end;
+    end;
+  { a keyring kept in another folder (Key Management > Keyring Location) must be reachable, for example a USB
+    stick that is plugged in; never fall back to an empty keyring silently }
+  HomeArg := False;
+  for I := 1 to ParamCount do
+    if LowerCase(ParamStr(I)).StartsWith('/home:') then HomeArg := True;
+  if (not HomeArg) and FileExists(LocationFile) then
+    while not DirectoryExists(IncludeTrailingPathDelimiter(CryptLokDataFolder) + 'gnupg') do
+      if MessageBox(0, PChar('CryptLok keeps your keyring in:' + sLineBreak + CryptLokDataFolder + sLineBreak +
+        sLineBreak + 'That folder cannot be found. If it is on a USB stick or network drive, connect it and click ' +
+        'Retry.' + sLineBreak + sLineBreak + 'Cancel closes CryptLok.'), 'CryptLok - keyring not found',
+        MB_RETRYCANCEL or MB_ICONWARNING) <> IDRETRY then
+        Exit;
   { one instance: a second launch hands its command line to the running one (Explorer starts one
     process per selected file) or just brings it back }
   Mutex := CreateMutex(nil, True, 'Level103.CryptLok.SingleInstance');

@@ -27,7 +27,7 @@ implementation
 
 uses
   System.StrUtils, System.Math, System.DateUtils, System.Generics.Collections, System.IOUtils, Vcl.Clipbrd, Winapi.Windows,
-  OPD.PassphraseDialog, OPD.PhotoId, OPD.PrefsDialog;
+  OPD.PassphraseDialog, OPD.PhotoId, OPD.PrefsDialog, OPD.PassCache;
 
 const
   BANNER_COLOR = $00706257;
@@ -768,11 +768,12 @@ begin
     Tries := 0;
     repeat
       Inc(Tries);
-      Mr := AskPassphrase(AOwner, Signer.DisplayName + ' ' + Signer.ShortId,
-        'Enter the passphrase of your key to sign.', False, Pass);
+      Mr := AskPassCached(AOwner, Signer.KeyId, Signer.DisplayName + ' ' + Signer.ShortId,
+        'Enter the passphrase of your key to sign.', Pass);
       if Mr <> mrOk then Exit;
       try
         Res := AEngine.SignKey(AKey.Fingerprint, Signer.Fingerprint, LocalOnly, Pass);
+        NotePassphrase(Signer.KeyId, Pass, Res.Ok, Res.WrongPassphrase);
       finally
         WipeBytes(Pass);
       end;
@@ -919,6 +920,7 @@ begin
     D.EOld.Text := ''; D.ENew.Text := ''; D.EConf.Text := '';
     try
       RunBusy(procedure begin Res := AEngine.ChangePassphrase(AKey.Fingerprint, POld, PNew); end);
+      ForgetPass(AKey.KeyId);       { a cached copy of the old passphrase would no longer work }
     finally
       WipeBytes(POld);
       WipeBytes(PNew);

@@ -17,7 +17,7 @@ procedure OpenZipFile(AOwner: TComponent; const AEngine: IKeyEngine; const AFile
 implementation
 
 uses
-  System.StrUtils, System.IOUtils, OPD.PassphraseDialog, OPD.PgpZip, OPD.Tar, OPD.ViewerDialog;
+  System.StrUtils, System.IOUtils, OPD.PassphraseDialog, OPD.PgpZip, OPD.Tar, OPD.ViewerDialog, OPD.PassCache;
 
 type
   TZipViewer = class(TOPDForm)
@@ -192,6 +192,7 @@ var
   V: TZipViewer;
   M: TModalResult;
   Tries: Integer;
+  OwnId: string;
 begin
   { a file that is only signed needs no passphrase: try without one first }
   R.Ok := False;
@@ -202,15 +203,19 @@ begin
     Exit;
   end;
   Tries := 0;
+  OwnId := '';
+  if not R.Ok then
+    OwnId := OwnKeyFor(AEngine.ListKeys, AEngine.FileRecipients(AFile));
   while (not R.Ok) and (Tries < 5) do
   begin
-    M := AskPassphraseFor(AOwner, ExtractFileName(AFile),
+    M := AskPassForCached(AOwner, OwnId, ExtractFileName(AFile),
       'Enter the passphrase of your key, or the passphrase of the archive.',
       DescribeRecipients(AEngine.ListKeys, AEngine.FileRecipients(AFile)), Pass);
     if M <> mrOk then Exit;
     R.Ok := False;
     try
       RunBusy(procedure begin R := ZipDecrypt(AEngine, AFile, Pass, Plain, Inner); end);
+      NotePassphrase(OwnId, Pass, R.Ok, R.WrongPassphrase);
     finally
       WipeBytes(Pass);
     end;

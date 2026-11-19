@@ -10,7 +10,7 @@ uses
   System.SysUtils, System.Classes, System.Types, System.Generics.Collections,
   Winapi.Windows, Winapi.Messages, Vcl.Controls, Vcl.Forms, Vcl.Graphics,
   Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.Menus, Vcl.Dialogs, Vcl.GraphUtil,
-  Vcl.Imaging.pngimage, OPD.Theme, OPD.Engine, OPD.ClipboardService, OPD.DiskPages;
+  Vcl.Imaging.pngimage, OPD.Theme, OPD.Engine, OPD.ClipboardService, OPD.DiskPages, OPD.KeyringPages;
 
 const
   APP_NAME = 'CryptLok';
@@ -101,6 +101,8 @@ type
     FAutoImport: string;
     FTray: TTrayIcon;
     FTrayMenu: TPopupMenu;
+    FClearCacheItem: TMenuItem;
+    FPurgeTimer: TTimer;
     FClip: TClipboardService;
     FQuitting: Boolean;
     FDisks: TDiskController;
@@ -110,6 +112,8 @@ type
     FShredTimer: TTimer;
     FNewDisk: TNewDiskPage;
     FMyDisks: TMyDisksPage;
+    FBackupPage: TBackupPage;
+    FLocationPage: TLocationPage;
     FBandButton: TButton;
     FDiskMenu: TMenuItem;
     FListMenu: TPopupMenu;
@@ -117,6 +121,8 @@ type
     function KeysNow: TKeyInfoArray;
     procedure CreateDiskClick(Sender: TObject);
     procedure TrayPopup(Sender: TObject);
+    procedure ClearCacheClick(Sender: TObject);
+    procedure PurgeTick(Sender: TObject);
     procedure DiskMenuClick(Sender: TObject);
     procedure BuildTray;
     procedure BuildClipItems(AParent: TMenuItem);
@@ -171,6 +177,7 @@ type
     procedure ImportClick(Sender: TObject);
     procedure RefreshClick(Sender: TObject);
     procedure ExitClick(Sender: TObject);
+    procedure RestartApp;
     procedure AboutClick(Sender: TObject);
     procedure ColumnToggle(Sender: TObject);
     procedure ToggleRow(AIndex: Integer);
@@ -193,7 +200,7 @@ implementation
 
 uses
   System.StrUtils, System.Math, System.IOUtils, System.IniFiles, Winapi.CommCtrl, Vcl.Clipbrd, OPD.ImportDialog, OPD.RecipientDialog,
-  OPD.KeyDialogs, OPD.ZipWizard, OPD.ZipViewer, OPD.AboutDialog, OPD.ShellDialog, OPD.ShredDialog, OPD.WipeDialog, OPD.ViewerDialog, OPD.OptionsDialog, OPD.PrefsDialog, OPD.MasterKeys, OPD.SigFiles;
+  OPD.KeyDialogs, OPD.ZipWizard, OPD.ZipViewer, OPD.AboutDialog, OPD.ShellDialog, OPD.ShredDialog, OPD.WipeDialog, OPD.ViewerDialog, OPD.OptionsDialog, OPD.PrefsDialog, OPD.MasterKeys, OPD.SigFiles, OPD.PassCache;
 
 const
   SIDE_BG = $002C2A28;
@@ -233,6 +240,7 @@ begin
   Add('Zip', ['New Zip', 'Open a Zip'], [True, True]);
   Add('Disk', ['New Virtual Disk', 'My Disks', 'Encrypt Disk'], [True, True, False]);
   Add('Viewer', ['Open File...', 'View Clipboard'], [True, True]);
+  Add('Key Management', ['Backup Keyring', 'Keyring Location'], [True, True]);
   FActive := 0;
   FItem := 0;
 end;
@@ -435,6 +443,10 @@ begin
       Info := Copy(ParamStr(I), 7, MaxInt);
   FEngine := TGpgEngine.Create(Info);
   ApplyArmorSettings(FEngine);
+  LoadPassCachePolicy(FEngine);
+  FPurgeTimer := TTimer.Create(Self);       { wipes cached passphrases as soon as their time is up }
+  FPurgeTimer.Interval := 15000;
+  FPurgeTimer.OnTimer := PurgeTick;
   FColDefaults := Copy(FColDefs);
   LoadColumnPrefs;
   FClip := TClipboardService.Create(Self, FEngine, TrayNotify);
@@ -560,6 +572,12 @@ begin
   FMyDisks.Parent := Self;
   FMyDisks.Align := alClient;
   FMyDisks.Visible := False;
+  FBackupPage := TBackupPage.Create(Self, FEngine, RestartApp);
+  FBackupPage.Align := alClient;
+  FBackupPage.Visible := False;
+  FLocationPage := TLocationPage.Create(Self, FEngine, RestartApp);
+  FLocationPage.Align := alClient;
+  FLocationPage.Visible := False;
   FBandButton := TButton.Create(Self);
   FBandButton.Parent := FBand;
   FBandButton.Anchors := [akTop, akRight];
@@ -627,6 +645,9 @@ begin
   for I := 1 to ParamCount do
     if LowerCase(ParamStr(I)) = '/page:newdisk' then FSidebar.Select(2, 0)
     else if LowerCase(ParamStr(I)) = '/page:mydisks' then FSidebar.Select(2, 1)
+    else if LowerCase(ParamStr(I)) = '/page:backup' then FSidebar.Select(4, 0)
+    else if LowerCase(ParamStr(I)) = '/page:location' then FSidebar.Select(4, 1)
+    else if LowerCase(ParamStr(I)) = '/dlg:options' then ShowOptions(Self, FEngine)
     else if LowerCase(ParamStr(I)) = '/page:adduser' then
     begin
       FSidebar.Select(2, 0);
@@ -1276,7 +1297,8 @@ end;
 
 procedure TMainForm.SelectPage(ASection, AItem: Integer);
 const
-  Titles: array[0..3] of string = ('Keys', 'Zip', 'Disk', 'Viewer');
+  Titles: array[0..4] of string = ('Keys', 'Zip', 'Disk', 'Viewer', 'Key Management');
+  KeyMgmtPages: array[0..1] of string = ('Backup Keyring', 'Keyring Location');
   KeyPages: array[0..2] of string = ('All Keys', 'My Private Keys', 'Search for Keys');
   DiskPages: array[0..1] of string = ('New Virtual Disk', 'My Disks');
 var
@@ -1287,6 +1309,8 @@ begin
   FPlaceholder.Visible := False;
   FNewDisk.Visible := False;
   FMyDisks.Visible := False;
+  FBackupPage.Visible := False;
+  FLocationPage.Visible := False;
   FBandButton.Visible := False;
   FSearch.Visible := ASection = 0;
   if ASection = 0 then
@@ -1311,6 +1335,20 @@ begin
     begin
       FMyDisks.RefreshList;
       FMyDisks.Visible := True;
+    end;
+  end
+  else if ASection = 4 then
+  begin
+    T := KeyMgmtPages[Max(AItem, 0)];
+    if AItem = 1 then
+    begin
+      FLocationPage.Prepare;
+      FLocationPage.Visible := True;
+    end
+    else
+    begin
+      FBackupPage.Prepare;
+      FBackupPage.Visible := True;
     end;
   end
   else if ASection = 3 then
@@ -1728,6 +1766,26 @@ begin
   LoadKeys;
 end;
 
+{ Key Management changed where the keyring is: start a fresh CryptLok (it waits for this one to end) and quit }
+procedure TMainForm.RestartApp;
+var
+  SI: TStartupInfo;
+  PI: TProcessInformation;
+  Cmd: string;
+begin
+  Cmd := '"' + ParamStr(0) + '" /waitpid:' + IntToStr(GetCurrentProcessId);
+  UniqueString(Cmd);
+  FillChar(SI, SizeOf(SI), 0);
+  SI.cb := SizeOf(SI);
+  if CreateProcess(nil, PChar(Cmd), nil, nil, False, 0, nil, nil, SI, PI) then
+  begin
+    CloseHandle(PI.hThread);
+    CloseHandle(PI.hProcess);
+  end;
+  FQuitting := True;
+  Close;
+end;
+
 procedure TMainForm.ExitClick(Sender: TObject);
 begin
   FQuitting := True;
@@ -1828,6 +1886,17 @@ begin
   end;
 end;
 
+procedure TMainForm.ClearCacheClick(Sender: TObject);
+begin
+  ClearPassCache;
+  TrayNotify(APP_NAME, 'Cached passphrases were cleared.');
+end;
+
+procedure TMainForm.PurgeTick(Sender: TObject);
+begin
+  PurgeExpiredPasses;
+end;
+
 procedure TMainForm.TrayPopup(Sender: TObject);
 var
   I: Integer;
@@ -1835,6 +1904,7 @@ var
   L: Char;
   Any: Boolean;
 begin
+  FClearCacheItem.Enabled := CachedPassCount > 0;
   FDiskMenu.Clear;
   Any := False;
   for I := 0 to FDisks.Count - 1 do
@@ -1908,6 +1978,8 @@ begin
   Mi('-');
   BuildClipItems(Mi('&Clipboard'));
   FDiskMenu := Mi('&Disks');
+  Mi('-');
+  FClearCacheItem := Mi('Clear &Passphrase Cache', ClearCacheClick);
   FTrayMenu.OnPopup := TrayPopup;
   FTray := TTrayIcon.Create(Self);
   FTray.Icon.Assign(Application.Icon);   { the combination lock, same as the program icon }
