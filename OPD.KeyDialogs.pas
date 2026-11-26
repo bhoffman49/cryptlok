@@ -70,6 +70,16 @@ end;
 
 { ---- Key Properties ---------------------------------------------------------- }
 
+const
+  PQ_NOTE = 'Your key is now post-quantum. Messages encrypted to it use Kyber together with a classic ' +
+    'elliptic curve, so they stay safe even against a future quantum computer.' + sLineBreak + sLineBreak +
+    'Good to know:' + sLineBreak +
+    '- People can encrypt to this key with CryptLok 0.3 or newer, or with GnuPG 2.5 or newer. Older programs ' +
+    '(for example Gpg4win 4.x, which has GnuPG 2.4) cannot use it; give them an RSA key as well if needed.' + sLineBreak +
+    '- Signatures made with this key are classic (Ed25519/Ed448); post-quantum signatures come later.' + sLineBreak +
+    '- It is a LibrePGP key, not an RFC 9580 (version 6) key such as those from Proton or PGPony.';
+
+
 type
   TPropsDialog = class(TOPDForm)
   private
@@ -81,6 +91,7 @@ type
     procedure AddPhotoClick(Sender: TObject);
     procedure EditPrefsClick(Sender: TObject);
     procedure SignaturesClick(Sender: TObject);
+    procedure AddPqClick(Sender: TObject);
     procedure RemovePhotoClick(Sender: TObject);
     procedure ShowPhotos;
   private
@@ -138,6 +149,72 @@ begin
     FMakePrimary.Visible := TPageControl(Sender).ActivePageIndex = 0;
     FRevokeUid.Visible := FMakePrimary.Visible;
   end;
+end;
+
+{ Adds a Kyber encryption subkey to one of your own keys: your fingerprint and the signatures on your key stay
+  the same, and senders with CryptLok 0.3+ / GnuPG 2.5+ encrypt to the new quantum-safe subkey. }
+procedure TPropsDialog.AddPqClick(Sender: TObject);
+var
+  F: TOPDForm;
+  L: TLabel;
+  Cb: TComboBox;
+  B: TButton;
+  Strong: Boolean;
+  Pass: TBytes;
+  Res: TCryptoResult;
+  Days, Tries: Integer;
+begin
+  F := TOPDForm.CreateNew(Self);
+  try
+    F.Caption := 'Add Post-Quantum Key';
+    F.BorderStyle := bsDialog;
+    F.Position := poOwnerFormCenter;
+    F.ClientWidth := 470;
+    F.ClientHeight := 210;
+    F.Font.Name := 'Segoe UI';
+    F.Font.Size := 9;
+    L := TLabel.Create(F); L.Parent := F; L.SetBounds(16, 12, 440, 80); L.AutoSize := False; L.WordWrap := True;
+    L.Caption := 'Adds a quantum-safe encryption part (Kyber, combined with a classic curve) to ' + FKey.DisplayName +
+      '. Your fingerprint and the signatures on your key stay the same. People who use CryptLok 0.3+ or ' +
+      'GnuPG 2.5+ will encrypt to the new part; older programs keep using your current encryption key.';
+    L := TLabel.Create(F); L.Parent := F; L.SetBounds(16, 104, 80, 18); L.Caption := 'Strength';
+    Cb := TComboBox.Create(F); Cb.Parent := F; Cb.Style := csDropDownList; Cb.SetBounds(100, 100, 350, 24);
+    Cb.Items.AddStrings(['Standard: Kyber-768 + X25519', 'Strong: Kyber-1024 + X448']);
+    Cb.ItemIndex := 0;
+    B := TButton.Create(F); B.Parent := F; B.SetBounds(274, 166, 84, 28); B.Caption := 'Add';
+    B.ModalResult := mrOk; B.Default := True;
+    B := TButton.Create(F); B.Parent := F; B.SetBounds(366, 166, 84, 28); B.Caption := 'Cancel';
+    B.ModalResult := mrCancel; B.Cancel := True;
+    if F.ShowModal <> mrOk then Exit;
+    Strong := Cb.ItemIndex = 1;
+  finally
+    F.Free;
+  end;
+  { the new part expires with the key }
+  if FKey.Expires > 0 then Days := Max(1, Trunc(FKey.Expires - Now)) else Days := 0;
+  Tries := 0;
+  repeat
+    Inc(Tries);
+    if AskPassphrase(Self, FKey.DisplayName + ' ' + FKey.ShortId,
+      'Enter the passphrase of this key to add the post-quantum part.', False, Pass) <> mrOk then Exit;
+    try
+      RunBusy(procedure begin Res := FEngine.AddEncryptionSubkey(FKey.Fingerprint, PQ_SUBKEY[Strong], Days, Pass); end);
+    finally
+      WipeBytes(Pass);
+    end;
+    if Res.WrongPassphrase then
+      Application.MessageBox('That passphrase was not accepted.', 'Passphrase', MB_OK or MB_ICONWARNING);
+  until (not Res.WrongPassphrase) or (Tries >= 3);
+  if not Res.Ok then
+  begin
+    if not Res.WrongPassphrase then
+      Application.MessageBox(PChar('The post-quantum part was not added: ' + Res.Error), 'Add Post-Quantum Key',
+        MB_OK or MB_ICONWARNING);
+    Exit;
+  end;
+  Changed := True;
+  Application.MessageBox(PChar(PQ_NOTE), 'Add Post-Quantum Key', MB_OK or MB_ICONINFORMATION);
+  ModalResult := mrCancel;          { closes, so the key is read fresh next time }
 end;
 
 procedure TPropsDialog.SignaturesClick(Sender: TObject);
@@ -383,6 +460,15 @@ begin
   Row(Tab, 'Type', AKey.AlgoName + IfThen(AKey.HasSecret, ' (key pair)', ' (public key)'), 4, 64);
   Row(Tab, 'Status', IfThen(AKey.Revoked, 'Revoked', IfThen(AKey.Expired, 'Expired', 'Valid')), 256, 12);
   Row(Tab, 'Key Usage', UsageText(AKey.Caps), 256, 38);
+  Row(Tab, 'Quantum-safe', IfThen(AKey.IsPostQuantum, 'Yes, ' + AKey.PostQuantumText, 'No'), 4, 90);
+  if AKey.HasSecret and not AKey.IsPostQuantum and not AKey.Revoked and not AKey.Expired then
+  begin
+    B := TButton.Create(Self);
+    B.Parent := Tab;
+    B.SetBounds(296, 90, 170, 26);
+    B.Caption := 'Add Post-Quantum Key...';
+    B.OnClick := AddPqClick;
+  end;
 
   { preferences and photo, read from the key itself }
   FEngine.ReadKeyExtras(AKey.Fingerprint, FPhotos, Prefs);
@@ -1181,14 +1267,16 @@ begin
   L.SetBounds(16, 12, 440, 36);
   L.AutoSize := False;
   L.WordWrap := True;
-  L.Caption := 'Create a new RSA key pair. Others use your public key to send you encrypted ' +
+  L.Caption := 'Create a new key pair. Others use your public key to send you encrypted ' +
     'messages; your private key and its passphrase stay on this computer.';
 
   Y := 60;  Add('Full name');  EName := Edit;
   Y := 92;  Add('Email address');  EEmail := Edit;
-  Y := 124; Add('Key size');
+  Y := 124; Add('Key type');
   Bits := TComboBox.Create(Self); Bits.Parent := Self; Bits.Style := csDropDownList;
-  Bits.SetBounds(152, Y, 120, 24); Bits.Items.AddStrings(['2048 bits', '3072 bits', '4096 bits']);
+  Bits.SetBounds(152, Y, 290, 24);
+  Bits.Items.AddStrings(['RSA 2048 bits', 'RSA 3072 bits', 'RSA 4096 bits',
+    'Post-quantum: Ed25519 + Kyber-768', 'Post-quantum (strong): Ed448 + Kyber-1024']);
   Bits.ItemIndex := 1;
   Y := 156; Add('Expires');
   Expire := TComboBox.Create(Self); Expire.Parent := Self; Expire.Style := csDropDownList;
@@ -1219,7 +1307,7 @@ var
   Bits, Days, I: Integer;
   Res: TCryptoResult;
   Name, Email, P1, P2: string;
-  Done: Boolean;
+  Done, PQ, Strong: Boolean;
 begin
   Result := False;
   AFingerprint := '';
@@ -1269,6 +1357,8 @@ begin
       end;
     until Done;
 
+    PQ := D.Bits.ItemIndex >= 3;
+    Strong := D.Bits.ItemIndex = 4;
     case D.Bits.ItemIndex of
       0: Bits := 2048;
       2: Bits := 4096;
@@ -1288,7 +1378,11 @@ begin
     D.EPass.Text := '';
     D.EPass2.Text := '';
     try
-      RunBusy(procedure begin Res := AEngine.GenerateKey(Name, Email, Bits, Days, Pass); end);
+      if PQ then
+        RunBusy(procedure begin
+          Res := AEngine.GenerateKeyAlgo(Name, Email, PQ_PRIMARY[Strong], PQ_SUBKEY[Strong], Days, Pass); end)
+      else
+        RunBusy(procedure begin Res := AEngine.GenerateKey(Name, Email, Bits, Days, Pass); end);
     finally
       WipeBytes(Pass);
     end;
@@ -1296,6 +1390,8 @@ begin
     begin
       AFingerprint := Res.Text;
       Result := True;
+      if PQ then
+        Application.MessageBox(PChar(PQ_NOTE), 'New Key Pair', MB_OK or MB_ICONINFORMATION);
     end
     else
       Application.MessageBox(PChar('The key was not created: ' + Res.Error), 'New Key Pair',

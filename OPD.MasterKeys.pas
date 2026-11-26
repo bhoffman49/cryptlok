@@ -128,7 +128,7 @@ begin
   V := '';
   if Add then
   begin
-    { the file version is 0.2.1.0; the messages say 0.2.1 }
+    { the file version is 0.3.0.0; the messages say 0.3.0 }
     P := AppVersionText.Split(['.']);
     if (Length(P) = 4) and (P[3] = '0') then
       V := 'CryptLok ' + P[0] + '.' + P[1] + '.' + P[2]

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 — Post-quantum keys
+
+CryptLok can now make **post-quantum key pairs**. Messages to these keys are encrypted with **Kyber** (ML-KEM)
+combined with a classic elliptic curve ("hybrid"), so they stay safe even against a future quantum computer,
+and are never weaker than today's keys. This uses the GnuPG 2.5 engine CryptLok already includes (LibrePGP).
+
+- **New Key Pair > Key type:** *Post-quantum: Ed25519 + Kyber-768*, or *Post-quantum (strong): Ed448 +
+  Kyber-1024*, next to the RSA sizes.
+- **Add Post-Quantum Key...** (Key Properties > General, your own keys): adds a Kyber encryption part to a key you
+  already have. Your fingerprint and the signatures on your key stay the same; people with CryptLok 0.3+ or
+  GnuPG 2.5+ encrypt to the new part, older programs keep using your current encryption key.
+- **Shown clearly:** "Quantum-safe: Yes, Kyber-768 + X25519" in Key Properties, "EdDSA/Kyber key pair" in the key
+  list, and "(PQ)" next to quantum-safe keys in the recipient window.
+
+Tested with another program: a CryptLok post-quantum key imports into PGPony (iPad), and PGPony's post-quantum
+encrypted reply decrypts in CryptLok.
+
+Good to know: only CryptLok 0.3+ and GnuPG 2.5+ can encrypt to these keys (Gpg4win 4.x has GnuPG 2.4 and cannot).
+Signatures stay classic (Ed25519/Ed448) for now. These are LibrePGP keys, not RFC 9580 (version 6) keys such as
+those from Proton or PGPony; support for those is planned with a second engine (Sequoia).
+
 ## 0.2.1 — 2026-11-19
 - Key Management pages: the text wraps to the window width and the layout is more compact.
 - New Virtual Disk page: fields start further left and the folder box and key list fit narrower windows.

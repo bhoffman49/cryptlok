@@ -33,6 +33,7 @@ type
     Caps: string;
     Revoked: Boolean;
     Expired: Boolean;
+    Curve: string;        { ECC curve or Kyber variant, e.g. ed25519, ky768_cv25519 }
   end;
 
   TKeyInfo = record
@@ -49,6 +50,7 @@ type
     Revoked: Boolean;
     Expired: Boolean;
     Disabled: Boolean;
+    Curve: string;
     UserIds: TArray<TUserIdInfo>;
     SubKeys: TArray<TSubKeyInfo>;
     function DisplayName: string;
@@ -59,8 +61,19 @@ type
     function Description: string;      { "RSA key pair" ... }
     function TrustText: string;
     function IsVerified: Boolean;
+    { has a usable post-quantum (Kyber) encryption subkey }
+    function IsPostQuantum: Boolean;
+    { e.g. 'Kyber-768 + X25519' for the newest usable Kyber subkey, '' when there is none }
+    function PostQuantumText: string;
   end;
   TKeyInfoArray = TArray<TKeyInfo>;
+
+const
+  { post-quantum key types (LibrePGP hybrid Kyber, GnuPG 2.5+): primary (sign/certify) + encryption subkey }
+  PQ_PRIMARY: array[Boolean] of string = ('ed25519', 'ed448');            { False = standard, True = strong }
+  PQ_SUBKEY: array[Boolean] of string = ('ky768_cv25519', 'ky1024_cv448');
+
+type
 
   TImportOutcome = (ioNew, ioUpdated, ioUnchanged, ioSkipped, ioFailed);
 
@@ -178,6 +191,12 @@ type
     { New RSA key pair with an encryption subkey. AExpireDays = 0 means never. }
     function GenerateKey(const AName, AEmail: string; ABits, AExpireDays: Integer;
       const APassphrase: TBytes): TCryptoResult;
+    { New key pair with any GnuPG algorithms, e.g. ('ed25519', 'ky768_cv25519') for post-quantum. }
+    function GenerateKeyAlgo(const AName, AEmail, APrimaryAlgo, ASubAlgo: string; AExpireDays: Integer;
+      const APassphrase: TBytes): TCryptoResult;
+    { Adds an encryption subkey (e.g. Kyber) to one of our keys. }
+    function AddEncryptionSubkey(const AFingerprint, ASubAlgo: string; AExpireDays: Integer;
+      const APassphrase: TBytes): TCryptoResult;
     { Changes the passphrase of a private key (all its parts). }
     function ChangePassphrase(const AFingerprint: string; const AOld, ANew: TBytes): TCryptoResult;
     { Adds another user ID (name + email) to one of your private keys. }
@@ -263,6 +282,12 @@ type
       const APassphrase: TBytes): TCryptoResult;
     { New RSA key pair with an encryption subkey. AExpireDays = 0 means never. }
     function GenerateKey(const AName, AEmail: string; ABits, AExpireDays: Integer;
+      const APassphrase: TBytes): TCryptoResult;
+    { New key pair with any GnuPG algorithms, e.g. ('ed25519', 'ky768_cv25519') for post-quantum. }
+    function GenerateKeyAlgo(const AName, AEmail, APrimaryAlgo, ASubAlgo: string; AExpireDays: Integer;
+      const APassphrase: TBytes): TCryptoResult;
+    { Adds an encryption subkey (e.g. Kyber) to one of our keys. }
+    function AddEncryptionSubkey(const AFingerprint, ASubAlgo: string; AExpireDays: Integer;
       const APassphrase: TBytes): TCryptoResult;
     { Changes the passphrase of a private key (all its parts). }
     function ChangePassphrase(const AFingerprint: string; const AOld, ANew: TBytes): TCryptoResult;
@@ -410,9 +435,44 @@ begin
     22: Result := 'EdDSA';
     25: Result := 'X25519';
     27: Result := 'Ed25519';
+    8: Result := 'Kyber';
   else
     Result := 'Algo ' + IntToStr(AAlgo);
   end;
+end;
+
+function KyberText(const ACurve: string): string;
+var
+  C: string;
+begin
+  C := LowerCase(ACurve);
+  if C.StartsWith('ky1024') then Result := 'Kyber-1024' else if C.StartsWith('ky768') then Result := 'Kyber-768'
+  else Result := 'Kyber';
+  if C.EndsWith('cv25519') then Result := Result + ' + X25519'
+  else if C.EndsWith('cv448') then Result := Result + ' + X448'
+  else if C.EndsWith('bp256') then Result := Result + ' + Brainpool P-256'
+  else if C.EndsWith('bp384') then Result := Result + ' + Brainpool P-384';
+end;
+
+function TKeyInfo.IsPostQuantum: Boolean;
+begin
+  Result := PostQuantumText <> '';
+end;
+
+function TKeyInfo.PostQuantumText: string;
+var
+  I: Integer;
+  Newest: TDateTime;
+begin
+  Result := '';
+  Newest := -1;
+  for I := 0 to High(SubKeys) do
+    if (SubKeys[I].Algo = 8) and (Pos('e', SubKeys[I].Caps) > 0) and not SubKeys[I].Revoked and
+       not SubKeys[I].Expired and (SubKeys[I].Created > Newest) then
+    begin
+      Newest := SubKeys[I].Created;
+      Result := KyberText(SubKeys[I].Curve);
+    end;
 end;
 
 function TKeyInfo.AlgoName: string;
@@ -1233,6 +1293,7 @@ begin
         Key.Revoked := Key.Validity = 'r';
         Key.Expired := Key.Validity = 'e';
         Key.Disabled := Pos('D', Key.Caps) > 0;
+        Key.Curve := Field(F, 16);
         Have := True;
         Context := 1;
       end
@@ -1247,6 +1308,7 @@ begin
         Sub.Caps := Field(F, 11);
         Sub.Revoked := Field(F, 1) = 'r';
         Sub.Expired := Field(F, 1) = 'e';
+        Sub.Curve := Field(F, 16);
         Subs.Add(Sub);
         Context := 2;
       end
@@ -2402,6 +2464,36 @@ end;
 
 function TGpgEngine.GenerateKey(const AName, AEmail: string; ABits, AExpireDays: Integer;
   const APassphrase: TBytes): TCryptoResult;
+begin
+  Result := GenerateKeyAlgo(AName, AEmail, 'rsa' + IntToStr(ABits), 'rsa' + IntToStr(ABits), AExpireDays, APassphrase);
+end;
+
+function TGpgEngine.AddEncryptionSubkey(const AFingerprint, ASubAlgo: string; AExpireDays: Integer;
+  const APassphrase: TBytes): TCryptoResult;
+var
+  Expire, O, E: string;
+  Input: TBytes;
+  Code: Integer;
+begin
+  FillChar(Result, SizeOf(Result), 0);
+  if AExpireDays > 0 then Expire := IntToStr(AExpireDays) + 'd' else Expire := 'never';
+  Input := PassInput(APassphrase);
+  try
+    if Run(['--pinentry-mode', 'loopback', '--passphrase-fd', '0', '--quick-add-key', AFingerprint,
+      ASubAlgo, 'encr', Expire], Input, O, E, Code) and (Code = 0) then
+      Result.Ok := True
+    else
+    begin
+      Result.Error := GpgReason(E);
+      Result.WrongPassphrase := ContainsText(E, 'Bad passphrase') or ContainsText(E, 'bad passphrase');
+    end;
+  finally
+    WipeBytes(Input);
+  end;
+end;
+
+function TGpgEngine.GenerateKeyAlgo(const AName, AEmail, APrimaryAlgo, ASubAlgo: string; AExpireDays: Integer;
+  const APassphrase: TBytes): TCryptoResult;
 var
   Uid, Fpr, Expire, O, E, Line: string;
   Input: TBytes;
@@ -2422,7 +2514,7 @@ begin
   try
     { primary key: sign + certify }
     if not Run(['--pinentry-mode', 'loopback', '--passphrase-fd', '0', '--quick-generate-key',
-      Uid, 'rsa' + IntToStr(ABits), 'sign,cert', Expire], Input, O, E, Code) or (Code <> 0) then
+      Uid, APrimaryAlgo, 'sign,cert', Expire], Input, O, E, Code) or (Code <> 0) then
     begin
       Result.Error := GpgReason(E);
       Exit;
@@ -2452,7 +2544,7 @@ begin
   Input := PassInput(APassphrase);
   try
     if not Run(['--pinentry-mode', 'loopback', '--passphrase-fd', '0', '--quick-add-key', Fpr,
-      'rsa' + IntToStr(ABits), 'encr', Expire], Input, O, E, Code) or (Code <> 0) then
+      ASubAlgo, 'encr', Expire], Input, O, E, Code) or (Code <> 0) then
     begin
       Result.Error := 'The key pair was created but adding the encryption subkey failed: ' + GpgReason(E);
       Exit;

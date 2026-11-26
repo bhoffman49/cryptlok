@@ -363,8 +363,8 @@ with open(os.path.join(ROOT, 'CryptLok.Assets.rc'), 'w') as f:
     f.write('\n'.join(rc) + '\n')
     f.write('1 24 "CryptLok.manifest"\n')
     f.write('''1 VERSIONINFO
-FILEVERSION 0,2,1,0
-PRODUCTVERSION 0,2,1,0
+FILEVERSION 0,3,0,0
+PRODUCTVERSION 0,3,0,0
 FILEFLAGSMASK 0x3fL
 FILEOS 0x4L
 FILETYPE 0x1L
@@ -375,12 +375,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Level103"
       VALUE "FileDescription", "CryptLok - OpenPGP Encryption Suite"
-      VALUE "FileVersion", "0.2.1.0"
+      VALUE "FileVersion", "0.3.0.0"
       VALUE "InternalName", "CryptLok"
       VALUE "LegalCopyright", "Copyright (C) 2026 Brian Hoffman"
       VALUE "OriginalFilename", "CryptLok.exe"
       VALUE "ProductName", "CryptLok"
-      VALUE "ProductVersion", "0.2.1.0"
+      VALUE "ProductVersion", "0.3.0.0"
     END
   END
   BLOCK "VarFileInfo"

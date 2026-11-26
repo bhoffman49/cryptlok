@@ -234,7 +234,7 @@ begin
       if (Q <> '') and (Pos(Q, LowerCase(FKeys[I].DisplayName + ' ' + FKeys[I].DisplayEmail +
          ' ' + FKeys[I].KeyId)) = 0) then Continue;
       LI := FSource.Items.Add;
-      LI.Caption := FKeys[I].DisplayName;
+      LI.Caption := FKeys[I].DisplayName + IfThen(FKeys[I].IsPostQuantum, '  (PQ)', '');
       LI.SubItems.Add(FKeys[I].DisplayEmail);
       LI.ImageIndex := IfThen(FKeys[I].HasSecret, 0, 1);
       LI.Data := Pointer(I);
@@ -253,7 +253,8 @@ begin
   for I in FChosen do
   begin
     LI := FTarget.Items.Add;
-    LI.Caption := FKeys[I].DisplayName + IfThen(FLocked.IndexOf(I) >= 0, '  (master key)', '');
+    LI.Caption := FKeys[I].DisplayName + IfThen(FKeys[I].IsPostQuantum, '  (PQ)', '') +
+      IfThen(FLocked.IndexOf(I) >= 0, '  (master key)', '');
     LI.SubItems.Add(FKeys[I].DisplayEmail);
     LI.ImageIndex := IfThen(FKeys[I].HasSecret, 0, 1);
     LI.Data := Pointer(I);
@@ -314,7 +315,7 @@ begin
   end;
   FId.Caption := FKeys[AIndex].ShortId;
   FVerified.Caption := IfThen(FKeys[AIndex].IsVerified, 'Yes', 'No');
-  FType.Caption := FKeys[AIndex].AlgoName;
+  FType.Caption := FKeys[AIndex].AlgoName + IfThen(FKeys[AIndex].IsPostQuantum, ' + Kyber', '');
   FSize.Caption := FKeys[AIndex].SizeText;
 end;
 
